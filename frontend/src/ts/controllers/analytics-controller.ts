@@ -6,41 +6,52 @@ import {
 } from "firebase/analytics";
 import { app as firebaseApp } from "../firebase";
 import { createErrorMessage } from "../utils/misc";
+import { parseWithSchema as parseJsonWithSchema } from "@monkeytype/util/json";
+import { z } from "zod";
 
-export let Analytics: AnalyticsType;
+let analytics: AnalyticsType;
+
+const AcceptedCookiesSchema = z.object({
+  security: z.boolean(),
+  analytics: z.boolean(),
+});
+
+type AcceptedCookies = z.infer<typeof AcceptedCookiesSchema>;
 
 export async function log(
   eventName: string,
-  params?: { [key: string]: string }
+  params?: Record<string, string>
 ): Promise<void> {
   try {
-    logEvent(Analytics, eventName, params);
+    logEvent(analytics, eventName, params);
   } catch (e) {
     console.log("Analytics unavailable");
   }
 }
 
 const lsString = localStorage.getItem("acceptedCookies");
-let acceptedCookies: {
-  security: boolean;
-  analytics: boolean;
-} | null;
-if (lsString) {
-  acceptedCookies = JSON.parse(lsString);
+let acceptedCookies: AcceptedCookies | null;
+if (lsString !== undefined && lsString !== null && lsString !== "") {
+  try {
+    acceptedCookies = parseJsonWithSchema(lsString, AcceptedCookiesSchema);
+  } catch (e) {
+    console.error("Failed to parse accepted cookies:", e);
+    acceptedCookies = null;
+  }
 } else {
   acceptedCookies = null;
 }
 
 if (acceptedCookies !== null) {
-  if (acceptedCookies["analytics"] === true) {
+  if (acceptedCookies.analytics) {
     activateAnalytics();
   }
 }
 
 export function activateAnalytics(): void {
   try {
-    Analytics = getAnalytics(firebaseApp);
-    setAnalyticsCollectionEnabled(Analytics, true);
+    analytics = getAnalytics(firebaseApp);
+    setAnalyticsCollectionEnabled(analytics, true);
     $("body").append(`
     <script
     async
